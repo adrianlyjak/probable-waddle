@@ -1,5 +1,6 @@
 const Canvas = require("drawille-canvas");
-const { copy } = require("./copy")
+const { copy } = require("./copy");
+
 
 function Environment() {
   let listeners = [];
@@ -83,4 +84,4 @@ function CLIEnvironment(c /*: Canvas*/, onKeyPress /*: String => Unit */) {
   }
 }
 
-module.exports = Environment
+module.exports = Environment()

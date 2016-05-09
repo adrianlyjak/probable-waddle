@@ -1,8 +1,7 @@
-const Environment     = require("./environment");
-const models           = require("./models")
-const Engine          = require("./engine")
+const environment      = require("./environment");
+const levels           = require("./levels");
+const Engine           = require("./engine")
 
-const env = Environment();
-const initialState = models(env).TestLevel();
-const engine = Engine(env, initialState);
+const initialState = levels.testLevel;
+const engine = Engine(initialState);
 engine.play();

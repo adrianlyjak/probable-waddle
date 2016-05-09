@@ -1,30 +1,49 @@
 const { copy } = require("./copy");
+const environment = require("./environment");
 
-function Engine(environment, initialState) {
-  let frame = Frame(initialState);
-  let intervalId;
+function Engine(initialState) {
   let isRunning = false;
-  return {
-    play(fps = 30) {
+  const engine = {
+    locks: {
+      renderLoop: null,
+      gameLoop: null,
+    },
+    hook: {
+      next(state, events) {
+        if (events.playerDead) {
+          pause(); console.log("YOU DEAD");
+          engine.frame = initialState;
+          play();
+        } else if (events.playerWon) {
+          pause(); console.log("YOU WON");
+        }
+      }
+    },
+    frame: Frame(initialState),
+    play(renderFps = 30, gameFps = 30) {
       this.pause();
       isRunning = true;
-      intervalId = setInterval(() => {
+      this.locks.renderLoop = setInterval(() => {
         let { x, y } = environment.getCanvasShape();
         environment.canvas.clearRect(0, 0, x, y);
-        frame.draw(environment.canvas);
+        this.frame.draw(environment.canvas);
         environment.flush();
-        frame = frame.next();
-      }, 1000/fps);
+      }, 1000/renderFps);
+      this.locks.gameLoop = setInterval(() => {
+        this.frame = this.frame.next();
+      }, 1000/gameFps);
     },
     pause() {
-      if (intervalId) clearInterval(intervalId);
+      if (this.locks.renderLoop) clearInterval(this.locks.renderLoop);
+      if (this.locks.gameLoop) clearInterval(this.locks.gameLoop);
       isRunning = false;
     }
   }
-
+  return engine;
 }
 
 function Frame(state) {
+  console.log(state);
   return Object.freeze({
     currentState: state,
     draw(c) {
