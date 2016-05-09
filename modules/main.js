@@ -1,14 +1,8 @@
-import models from "./models";
-import Engine from "./engine"
-import { buildFrom, createBuilders } from "./classless";
+const Environment     = require("./environment");
+const models           = require("./models")
+const Engine          = require("./engine")
 
-const scenarios = {
-  test: {
-    gameobjects: [models.bouncingRectangle()]
-  }
-}
-
-
-var engine = Engine({ scenario: scenarios.test });
-
-engine.play({ fps: 30 });
+const env = Environment();
+const initialState = models(env).TestLevel();
+const engine = Engine(env, initialState);
+engine.play();

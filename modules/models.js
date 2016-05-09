@@ -1,81 +1,150 @@
-import $ from "jquery";
-import { buildFrom, createBuilders } from "./classless";
+const { copy, maybe } = require("./copy")
+const option = require("option");
 
-const models = createBuilders({
-  gameobject() {
-    return {
-      next() {
-        return [this];
+module.exports = (environment) => {
+  function TestLevel() {
+    return [Player(), KeyState()];
+  }
+
+  function Square(config) {
+    return copy({
+      outsideCanvas() {
+        let canv = environment.getCanvasShape()
+        let { p, d } = this.shorthand();
+        let rel_x, rel_y;
+
+        if  (p.x < 0)                 { rel_x = -1; }
+        else if (p.x + d.x >= canv.x) { rel_x =  1; }
+        else                          { rel_x =  0; }
+
+        if  (p.y < 0)                 { rel_y = -1; }
+        else if (p.y + d.y >= canv.y) { rel_y =  1; }
+        else                          { rel_y =  0; }
+
+        return { x: rel_x, y: rel_y };
       },
-      draw(world) { /*no-op*/ },
-    }
-  },
-  color() { return {
-      r: 0, g: 0, b: 0, a: 1,
-      toCss() {
-        return `rgba(${this.r}, ${this.g}, ${this.b}, ${this.a})`;
+      bearing() {
+        let v = this.velocity
+        return { x: (v.x > 0) ? 1 : -1, y: (v.y > 0) ? 1 : -1 }
+      },
+      position: { x: 0, y: 0 },
+      velocity: { x: 0, y: 0 },
+      dimensions: { x: 5, y: 5 },
+      shorthand() {
+        return { p: this.position, v: this.velocity, d: this.dimensions }
+      },
+      next(state, events) {
+        let { p, v } = this.shorthand()
+        return copy(this, {
+          position: { x: p.x + v.x, y: p.y + v.y }
+        });
+      },
+      draw(c) {
+        let { p, d } = this.shorthand();
+        c.fillRect(p.x, p.y, d.x, d.y);
       }
-    }
-  },
-  bouncingRectangle() {
-    return buildFrom(models.gameobject(), {
-      position: {x: 0,y: 0},
-      velocity: {x: 1,y: 1},
-      dimensions: {x: 20,y: 20},
-      color: models.color({g:100}),
-      next(world) {
-        const handleWorldEdges = (getDimension) => {
-          const position_ = getDimension(this.position),
-                velocity_ = getDimension(this.velocity),
-                max_ = getDimension(world.canvasShape),
-                dimension_ = getDimension(this.dimensions);
-          const maybeReverse = (velocity_ > 0 && (position_ + dimension_ * 2 >= max_)) || (velocity_ < 0 && position_ - (dimension_ * 2) <= 0) ? -1 : 1
-          return velocity_ * maybeReverse;
+    }, config);
+  }
+
+  function Player() { return {
+      shape: Square({
+        dimensions: { x: 5, y: 5 },
+        velocity: { x: 1, y: 1 }
+      }),
+      projectileCooldown: 0,
+      limit({x,y}) {
+        let max = 4;
+        let min = max * -1;
+        function ranged(s) {
+          return Math.max(Math.min(s, max), min);
         }
-        const nextOne = buildFrom(this, {
-          position: { x: this.position.x + this.velocity.x, y: this.position.y + this.velocity.y },
-          velocity: {
-            x: handleWorldEdges((shape) => shape.x),
-            y: handleWorldEdges((shape) => shape.y)
-          }
-        });
-        const outer = this;
-        const spectral = models.spectral({
-          gameobject: this,
-          animation(self) {
-            const alpha = (self.iteration % 10 === 0) ? self.progress() * 0.5 : 0;
-            return { color: buildFrom(outer.color, { a: alpha }) };
-          }
-        });
-        return [spectral, nextOne];
+        return { x: ranged(x), y: ranged(y) }
       },
-      draw({ canvas }) {
-        canvas.fillStyle = this.color.toCss();
-        canvas.fillRect(this.position.x, this.position.y, this.dimensions.x, this.dimensions.y);
+      next(state, events) {
+        let ks = events.keystate;
+        let acc = { x: 0, y: 0 };
+
+        if (ks.left)  acc.x -= (acc.x > 0) ? 4 : 2;
+        if (ks.right) acc.x += (acc.x < 0) ? 4 : 2;
+        if (ks.up)    acc.y -= (acc.y > 0) ? 4 : 2;
+        if (ks.down)  acc.y += (acc.x < 0) ? 4 : 2;
+        let outside = this.shape.outsideCanvas()
+        let bearing = this.shape.bearing();
+        let bounceX = outside.x !== 0 && bearing.x === outside.x ? -0.25 : 1;
+        let bounceY = outside.y !== 0 && bearing.y === outside.y ? -0.25 : 1;
+        let vel = this.shape.velocity;
+        let nextVel = this.limit({ x: (vel.x + acc.x) * bounceX, y: (vel.y + acc.y) * bounceY });
+
+        let nextShape = copy(this.shape, { velocity: nextVel }).next(state, events);
+        let next = copy(this, { shape: nextShape, projectileCooldown: Math.max(0, this.projectileCooldown - 1) });
+        if (ks.space && this.projectileCooldown === 0) {
+          return next.withProjectile();
+        } else {
+          return [next];
+        }
+      },
+      withProjectile() {
+        console.log("projectile fired!");
+        let projectile = Projectile({
+          shape: Square({
+            velocity: { x: 0, y: -10 },
+            position: this.shape.position,
+            dimensions: {x: 3, y: 3 }
+          })
+        });
+        return [copy(this, { projectileCooldown: 10 }), projectile]
+      },
+      draw(c) {
+        this.shape.draw(c);
       }
-    });
-  },
-
-});
-
-function spectral({ subject = models.gameobject, animation = (self) => self }) {
-  return buildFrom(subject, {
-    subject: subject,
-    iteration: 0,
-    lifespan: 100,
-    animation,
-    progress() { return (this.lifespan - this.iteration) / this.lifespan },
-    buildGhostObject() {
-      return buildFrom(this.subject, this.animation(this));
-    },
-    next() {
-      if (this.iteration >= this.lifespan) { return []; }
-      else { return [buildFrom(this, { iteration: this.iteration + 1 })]; }
-    },
-    draw(world) {
-      this.buildGhostObject().draw(world);
     }
-  })
-}
+  }
 
-export default models;
+  function KeyState() {
+    const emptystate = {
+      left: false, right: false, up: false, down: false, space: false
+    };
+    let mutableState = Object.assign({}, emptystate);
+
+    let instance = {
+      initialize() {
+        environment.registerKeyListener((keyName) => {
+          mutableState[keyName] = true;
+        });
+      },
+      keystate: emptystate,
+      events() {
+        return { keystate: this.keystate };
+      },
+      next(state, events) {
+        const newState = mutableState;
+        mutableState = Object.assign({}, emptystate); // reset
+        return copy(this, { keystate: newState });
+      }
+    };
+    instance.initialize();
+    return instance;
+  }
+
+  function Projectile(config) {
+    return copy({
+      shape: Square({ dimensions: {x: 1, y: 1 }}),
+      draw(c) {
+        this.shape.draw(c);
+      },
+      next(state, events) {
+        let { x, y } = this.shape.outsideCanvas()
+        if (x !== 0 || y !== 0) {
+          return [];
+        } else {
+          return copy(this, {
+            shape: this.shape.next(events, state)
+          });
+        }
+      }
+    }, config)
+  }
+  return {
+    TestLevel, Player, KeyState
+  }
+}
