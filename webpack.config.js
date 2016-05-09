@@ -1,5 +1,5 @@
 module.exports = {
-  entry: './modules/main.js',
+  entry: './example.js',
   output: {
     filename: 'bundle.js'
   },
@@ -10,7 +10,7 @@ module.exports = {
         test: /\.js$/,
         loader: 'babel-loader',
         query: {
-          presets: ['es2015', 'react']
+          presets: ['es2015']
         }
       },
       { test: /\.less$/, loader: 'style-loader!css-loader!less-loader' }, // use ! to chain loaders

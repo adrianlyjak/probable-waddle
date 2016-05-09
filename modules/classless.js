@@ -1,7 +1,5 @@
-import extend from "extend";
-
-export function buildFrom(original, extensions = {}) {
-  return Object.freeze(extend({}, original, extensions));
+export function buildFrom(...objects) {
+  return Object.freeze(Object.assign({}, ...objects));
 }
 
 export function createBuilders(generators) {

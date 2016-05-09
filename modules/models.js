@@ -40,14 +40,14 @@ const models = createBuilders({
           }
         });
         const outer = this;
-        const ghost = models.ghost({
+        const spectral = models.spectral({
           gameobject: this,
           animation(self) {
             const alpha = (self.iteration % 10 === 0) ? self.progress() * 0.5 : 0;
             return { color: buildFrom(outer.color, { a: alpha }) };
           }
         });
-        return [ghost, nextOne];
+        return [spectral, nextOne];
       },
       draw({ canvas }) {
         canvas.fillStyle = this.color.toCss();
@@ -55,26 +55,27 @@ const models = createBuilders({
       }
     });
   },
-  ghost() {
-    return buildFrom(models.gameobject(), {
-      gameobject: models.gameobject(),
-      iteration: 0,
-      lifespan: 100,
-      progress() { return (this.lifespan - this.iteration) / this.lifespan },
-      animation(self) { return {} },
-      buildGhostObject() {
-        return buildFrom(this.gameobject, this.animation(this));
-      },
-      next() {
-        if (this.iteration >= this.lifespan) { return []; }
-        else { return [buildFrom(this, { iteration: this.iteration + 1 })]; }
-      },
-      draw(world) {
-        this.buildGhostObject().draw(world);
-      }
-    })
-  },
 
 });
+
+function spectral({ subject = models.gameobject, animation = (self) => self }) {
+  return buildFrom(subject, {
+    subject: subject,
+    iteration: 0,
+    lifespan: 100,
+    animation,
+    progress() { return (this.lifespan - this.iteration) / this.lifespan },
+    buildGhostObject() {
+      return buildFrom(this.subject, this.animation(this));
+    },
+    next() {
+      if (this.iteration >= this.lifespan) { return []; }
+      else { return [buildFrom(this, { iteration: this.iteration + 1 })]; }
+    },
+    draw(world) {
+      this.buildGhostObject().draw(world);
+    }
+  })
+}
 
 export default models;

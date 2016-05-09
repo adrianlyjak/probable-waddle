@@ -1,6 +1,5 @@
-import { buildFrom, createBuilders, factory } from "./classless";
-import $ from "jquery";
-
+const $ = require("jquery");
+const log = require("./log");
 
 function range(start, stop, step = 1) {
   const count = Math.abs((stop - start) / step);
@@ -48,104 +47,99 @@ const gui = ({canvasShape = {x: 480, y: 320}, parentElement = 'body'}) => {
 const world = (({ gui, gameobjects }) => {
   return {
         iteration: 0,
+        logSometimes(...args) {
+          if (this.iteration % 30 === 0) console.log(...args);
+        },
         gameobjects: gameobjects,
         gui: gui,
         state: gui.state,
         canvas: gui.canvas,
         canvasShape: gui.canvasShape,
         next() {
-            const futureobjects = this.gameobjects.reduce((accumulator, gameobject) => {
-              return accumulator.concat(gameobject.next(this) || []);
+            const futureobjects = this.gameobjects.reduce((accumulator, gameobject, i) => {
+              return accumulator.concat(gameobject.next(this));
             }, []);
-            return buildFrom(
-              this,
+            console.log("futureobjects", futureobjects);
+            return Object.assign({}, this,
               { gameobjects: futureobjects, iteration: this.iteration + 1 });
         },
         draw() {
-          gui.clearCanvas();
+          this.gui.clearCanvas();
           this.gameobjects.forEach((_) => _.draw(this));
         }
       }
     });
 
 const _gui = gui;
-const engine = ({ scenario, gui = _gui({}) }) => {
-  const engine0 = {
-    history: [],
+const engine = ({ scenario }) => {
+  const gui = _gui({}); //configurable?
+  const initialWorld = world({gameobjects: scenario.gameobjects, gui: gui})
+  const state = { // mutable private state
+    currentWorld: initialWorld,
+    fps: 1,
+    history: [initialWorld]
+  };
+  const instance = {
+    initialize() {
+      // TODO, write uninitialize function
+      this.gui.handlePlayPause(() => this.playPause());
+      this.gui.handleReverse(() => this.reverse());
+    },
+    get currentWorldIdx() { return state.history.indexOf(state.currentWorld) },
     gui: gui,
     scenario: scenario,
-    state: { },
-    gameloop({fps = 30, getNextFrame}) {
-      const state = this.state;
-      if (state.isRunning) {
-        clearInterval(state.loopId);
-        state.isRunning = false;
-      }
-      if (fps > 0) {
-        state.isRunning = true;
-        if (!state.currentWorld) { // lazy initialize world from scenario
-          state.currentWorld = world({
-            gameobjects: scenario.gameobjects, gui: gui
-          });
-          this.history.push(state.currentWorld);
+    gameloop({ getNextFrame }) {
+      log.debug("begin looping ...");
+      state.isRunning = true;
+      state.loopId = setInterval(() => {
+        state.currentWorld.draw();
+        const next = getNextFrame(state.currentWorld);
+        if (!next) {
+          log.debug("no more frames");
+          this.pause()
+        } else {
+          state.currentWorld = next;
         }
-        state.loopId = setInterval(() => {
-          state.currentWorld.draw();
-          const next = getNextFrame(state.currentWorld);
-          if (!next) {
-            console.log("no more frames");
-            this.pause()
-          } else {
-            state.currentWorld = next;
-          }
 
-        }, 1000/fps);
-      }
+      }, 1000/state.fps);
     },
-    currentWorldIdx() {
-      return this.history.indexOf(this.state.currentWorld)
-    },
-    play({ fps = 30 }) {
-      const frameIndex = this.currentWorldIdx();
-      if (frameIndex > -1 && frameIndex >= this.history.length) {
-        console.log("future state taking alternate path. Forgetting previous future");
-        this.history = this.history.slice(0, frameIndex);
+    play() {
+      const frameIndex = this.currentWorldIdx;
+      if (frameIndex > -1 && frameIndex <= state.history.length) {
+        log.info("future state taking alternate path. Forgetting previous future");
+        state.history = state.history.slice(0, frameIndex);
       }
       this.gameloop({
-        fps: fps,
         getNextFrame: (currentFrame) => {
           // TODO add event stage that's passed to next()
           const events = {};
-          const next = this.state.currentWorld.next(events);
-          this.history.push(next);
+          const next = state.currentWorld.next(events);
+          state.history.push(next);
           return next;
         }
-      })
+      });
     },
     pause() {
-      this.gameloop({fps: 0});
+      if (state.isRunning) {
+        log.debug("pausing loop ...");
+        clearInterval(state.loopId);
+        state.isRunning = false;
+      }
     },
-    replay({ frames, fps }) {
-      const queue = frames.slice(0).map((index) => this.history[index]);
-      this.gameloop({fps: fps, getNextFrame(currentFrame) {
+    replay({ frames }) {
+      const queue = frames.slice().map((index) => this.history[index]);
+      this.gameloop({ getNextFrame(currentFrame) {
         return queue.shift();
       }})
     },
     playPause() {
-      if (this.state.isRunning) {
-        this.pause();
-      } else {
-        this.play({});
-      }
+      if (state.isRunning) this.pause(); else this.play({});
     },
     reverse() {
-      this.replay({frames: range(this.currentWorldIdx(), -1, -1)})
+      this.replay({frames: range(this.currentWorldIdx, -1, -1)})
     }
   }
-
-  gui.handlePlayPause(() => engine0.playPause());
-  gui.handleReverse(() => engine0.reverse());
-  return engine0;
+  instance.initialize();
+  return instance;
 };
-
-export default engine;
+module.exports = engine;
