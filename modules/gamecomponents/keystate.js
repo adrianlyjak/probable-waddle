@@ -1,9 +1,9 @@
+const { copy } = require("../sugar");
+const environment = require("../environment");
 const { asBuilder } = require("./gameobject");
-const { copy } = require("./copy");
-const environment = require("./environment");
 
 module.exports = {
-  KeyState: asBuilder(() => {
+  KeyState: asBuilder(() => {  // singleton
     const emptystate = {
       left: false, right: false, up: false, down: false, space: false
     };
@@ -17,17 +17,14 @@ module.exports = {
         environment.removeKeyListener(this.updateNextKeyState);
       },
       updateNextKeyState(keyName) {
+        console.log("update")
         nextKeyState[keyName] = true;
       },
-      keystate: emptystate,
       events() {
-        return { keystate: this.keystate };
-      },
-      next(state, events) {
-        const newState = nextKeyState;
+        let eventState = copy(nextKeyState);
         nextKeyState = Object.assign({}, emptystate); // reset
-        return copy(this, { keystate: newState });
-      }
+        return { keystate: eventState }
+      },
     }
     instance.initialize();
     return instance;

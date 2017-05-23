@@ -1,7 +1,7 @@
 const environment      = require("./environment");
-const levels           = require("./levels");
-const Engine           = require("./engine")
+const levels           = require("./gamecomponents/levels");
+const Engine           = require("./engine");
 
 const initialState = levels.testLevel;
 const engine = Engine(initialState);
-engine.play();
+engine.play(60,60);

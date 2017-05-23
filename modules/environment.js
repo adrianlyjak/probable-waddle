@@ -1,5 +1,5 @@
 const Canvas = require("drawille-canvas");
-const { copy } = require("./copy");
+const { copy } = require("./sugar");
 
 
 function Environment() {

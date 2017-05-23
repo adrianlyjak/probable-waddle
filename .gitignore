@@ -1,5 +1,5 @@
 node_modules
 *.log
 bundle.js
-node_modules
-bundle.js
+*.iml
+.idea

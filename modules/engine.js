@@ -1,7 +1,8 @@
-const { copy } = require("./copy");
+const { copy, asArray } = require("./sugar");
 const environment = require("./environment");
 
 function Engine(initialState) {
+  if (!initialState) throw new Error("falsey initial state: " + initialState)
   let isRunning = false;
   const engine = {
     locks: {
@@ -19,7 +20,7 @@ function Engine(initialState) {
         }
       }
     },
-    frame: Frame(initialState),
+    frame: Frame(initialState, () => engine),
     play(renderFps = 30, gameFps = 30) {
       this.pause();
       isRunning = true;
@@ -33,6 +34,12 @@ function Engine(initialState) {
         this.frame = this.frame.next();
       }, 1000/gameFps);
     },
+    playNext(world) {
+      this.pause();
+      let next = Engine(world);
+      next.play();
+      return next;
+    },
     pause() {
       if (this.locks.renderLoop) clearInterval(this.locks.renderLoop);
       if (this.locks.gameLoop) clearInterval(this.locks.gameLoop);
@@ -42,32 +49,58 @@ function Engine(initialState) {
   return engine;
 }
 
-function Frame(state) {
-  console.log(state);
+Engine.hooks = {
+  GAME_OVER: "GAME_OVER",
+  GAME_WON:  "GAME_WON"
+}
+
+function Frame(state, getEngine) {
+  if (!state) throw new Error("falsey state: " + state);
   return Object.freeze({
     currentState: state,
+    index: 0,
     draw(c) {
       this.currentState.forEach((e) => {
         if (e.draw) e.draw(c);
       });
     },
-    next() {
-      // events
-      const events = this.currentState.reduce((soFar, gameobject) => {
+    buildEventMap(eventBuilders, soFar = {}) {
+      delete soFar.registers
+      if (eventBuilders.length === 0 || eventBuilders.size === 0) return soFar;
+      soFar.registers = new Map();
+      const events = eventBuilders.forEach((gameobject) => {
         if (gameobject.events) {
-          return copy(soFar, gameobject.events(this.currentState) || {});
-        } else {
-          return soFar;
+          let events = asArray(gameobject.events(this.currentState));
+          events.forEach((e) => {
+            if (e.isHook) {
+              e.action(getEngine());
+            }
+            if (e.isEventRegister) {
+              if (!soFar.registers.get(e.registerBuilder)) {
+                soFar.registers.set(e.registerBuilder, e.build());
+              }
+              const instance = soFar.registers.get(e.registerBuilder);
+              asArray(e.components).forEach((e) => {
+                instance.register(e)
+              });
+            } else {
+              Object.assign(soFar, e);
+            }
+          });
         }
-      }, {});
+        return soFar;
+      });
 
-      // state
+      return this.buildEventMap(soFar.registers, soFar);
+    },
+    next() {
+      const events = this.buildEventMap(this.currentState)
       const nextState = this.currentState.reduce((soFar, gameobject) => {
         var next = gameobject.next ? gameobject.next(this.currentState, events) : [gameobject];
         return soFar.concat(next);
       }, []);
 
-      return copy(this, { currentState: nextState });
+      return copy(this, { currentState: nextState, index: this.index + 1 });
     }
   });
 }
